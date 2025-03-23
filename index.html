@@ -1,0 +1,1010 @@
+<!-- Interactive PHITS Script Generator -->
+<!-- Developed by: Mehrdad S. Beni and Hiroshi Watabe -- RARiS, Tohoku University -- 2025 -->
+ 
+<!-- This program is free software: you can redistribute it and/or modify
+    it under the terms of the GNU General Public License as published by
+    the Free Software Foundation, either version 3 of the License, or
+    (at your option) any later version.
+ 
+    This program is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU General Public License for more details.
+ 
+     You should have received a copy of the GNU General Public License
+     along with this program.  If not, see <https://www.gnu.org/licenses/>. -->
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Interactive PHITS Script Generator</title>
+  <style>
+    body { margin: 0; }
+    #container { width: 100vw; height: 100vh; }
+    #controls {
+      position: absolute;
+      top: 10px;
+      left: 10px;
+      background: rgba(255,255,255,0.98);
+      padding: 10px;
+      border-radius: 4px;
+      z-index: 10;
+      max-height: 90vh;
+      overflow-y: auto;
+      font-family: monospace;
+      font-size: 0.9em;
+    }
+    .section { margin-bottom: 10px; }
+    label { display: block; margin-top: 5px; }
+    pre { background: #f0f0f0; padding: 5px; border: 1px solid #ccc; }
+    input[type="text"], input[type="number"], select {
+      width: 100%;
+      box-sizing: border-box;
+    }
+  </style>
+</head>
+<body>
+  <div id="container"></div>
+  <div id="controls">
+    <!-- PHITS Parameters Section -->
+    <div class="section">
+      <h4>PHITS Parameters</h4>
+      <label>Title:
+        <input type="text" id="titleInput" value="Interactive PHITS script generator">
+      </label>
+      <label>icntl:
+        <input type="text" id="icntlInput" value="0">
+      </label>
+      <label>maxcas:
+        <input type="number" id="maxcasInput" value="10000" step="1">
+      </label>
+      <label>maxbch:
+        <input type="number" id="maxbchInput" value="10" step="1">
+      </label>
+    </div>
+    <!-- Top Controls: Irradiation Axis and Material -->
+    <div class="section">
+      <label>Irradiation Axis:
+        <select id="irrAxis">
+          <option value="z" selected>Z</option>
+          <option value="x">X</option>
+          <option value="y">Y</option>
+        </select>
+      </label>
+      <label>Material:
+        <select id="materialSelect"></select>
+      </label>
+    </div>
+    <hr>
+    <!-- Shape selection and dimensions -->
+    <div class="section">
+      <label>Shape:
+        <select id="shapeSelect">
+          <option value="box">Rectangular Parallelepiped</option>
+          <option value="cylinder" selected>Cylinder</option>
+          <option value="sphere">Sphere</option>
+        </select>
+      </label>
+      <div id="boxParams" style="display: none;">
+        <label>Length (cm):
+          <input type="number" id="boxLength" value="10" step="0.1">
+        </label>
+        <label>Width (cm):
+          <input type="number" id="boxWidth" value="10" step="0.1">
+        </label>
+        <label>Height (cm):
+          <input type="number" id="boxHeight" value="10" step="0.1">
+        </label>
+      </div>
+      <div id="cylinderParams">
+        <label>Radius (cm):
+          <input type="number" id="cylinderRadius" value="0.565" step="0.1">
+        </label>
+        <label>Height (cm):
+          <input type="number" id="cylinderHeight" value="1" step="0.1">
+        </label>
+      </div>
+      <div id="sphereParams" style="display: none;">
+        <label>Radius (cm):
+          <input type="number" id="sphereRadius" value="5" step="0.1">
+        </label>
+      </div>
+    </div>
+    <hr>
+    <!-- Beam controls -->
+    <div class="section">
+      <label>Beam Position X (cm):
+        <input type="number" id="beamPosX" value="0" step="0.1">
+      </label>
+      <label>Beam Position Y (cm):
+        <input type="number" id="beamPosY" value="0" step="0.1">
+      </label>
+      <label>Beam Position Z (cm):
+        <input type="number" id="beamPosZ" value="-1" step="0.1">
+      </label>
+      <label>Beam Dir (cosθ):
+        <input type="number" id="beamDir" value="1" min="0" max="1" step="0.01">
+      </label>
+      <label>Beam Phi (°):
+        <input type="number" id="beamPhi" value="0" min="0" max="360" step="1">
+      </label>
+      <label>Beam Disk Radius (cm):
+        <input type="number" id="beamDiskRadius" value="0.565" step="0.1">
+      </label>
+      <label>Beam Energy (MeV):
+        <input type="number" id="beamEnergy" value="70" step="1">
+      </label>
+    </div>
+    <hr>
+    <button id="exportButton">Export PHITS Script</button>
+    <hr>
+    <!-- Non-editable PHITS Script display -->
+    <h4>PHITS Script:</h4>
+    <pre id="phitsScript"></pre>
+  </div>
+  
+  <!-- Include Three.js and OrbitControls -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/gh/mrdoob/three.js@r128/examples/js/controls/OrbitControls.js"></script>
+  
+  <script>
+    //embedded material.dat data
+    const materialDat = `TEP	1.127	6	6
+Acetylene	0.0010967	2	8
+Adipose-Tissue	0.92	13	21
+Air	0.00120479	4	25
+Al2O3	3.97	2	27
+Bone-Eq-plastic	1.45	6	33
+Bone-compact	1.85	8	41
+Bone-cortical	1.85	9	50
+Air-Eq-plastic	1.76	5	55
+CaF2	3.18	2	57
+CO2	0.00184212	2	59
+Cellulose-Nitrate	1.49	4	63
+Ceric-Sulfate-sol	1.03	5	68
+CsI	4.51	2	70
+Ethylene	0.00117497	2	72
+Ferrous-Sulfate-sol	1.024	7	79
+Pyrex-glass	2.23	6	85
+Kapton-Polymide	1.42	4	89
+LiF	2.635	2	91
+Lithium-Tetraborate	2.44	3	94
+M3-Wax	1.05	5	99
+Methane	6.67151E-4	2	101
+MS20-tissue-sub	1	6	107
+Muscle-Skeletal	1.04	13	120
+Muscle-Striated	1.04	9	129
+Muscle-Eq-liquid-sucrose	1.11	4	133
+Muscle-Eq-liquid	1.07	4	137
+Nylon-type-6	1.14	4	141
+Paraffin-Wax	0.93	2	143
+Photographic-Emulsion	3.815	8	151
+Plastic-Scintillator	1.032	2	153
+Polycarbonate	1.2	3	156
+Polyethylene	0.94	2	158
+Mylar	1.4	3	161
+Polymethyl-Methacralate	1.19	3	164
+Polypropylene	0.9	2	166
+Polystyrene	1.06	2	168
+Teflon	2.2	2	170
+Polyvinyl-Chloride	1.3	3	173
+Propane	0.00187939	2	175
+SiO2	2.32	2	177
+NaI	3.667	2	179
+Stilbene	0.9707	2	181
+Tissue-Eq-Gas-Methane	0.00106409	4	185
+Tissue-Eq-Gas-Propane	0.00182628	4	189
+Toluene	0.8669	2	191
+Water-liquid	1	2	193
+Water-vapor	7.56182E-4	2	195`;
+    
+    //embedded database1.dat data -- only for compunds
+    const databaseDat = `H	0.101327
+C	0.775501
+N	0.035057
+O	0.052316
+F	0.017422
+Ca	0.018378
+H	0.077418
+C	0.922582
+H	0.119477
+C	0.63724
+N	0.00797
+O	0.232333
+Na	5E-4
+Mg	2E-5
+P	1.6E-4
+S	7.3E-4
+Cl	0.00119
+K	3.2E-4
+Ca	2E-5
+Fe	2E-5
+Zn	2E-5
+C	1.24E-4
+N	0.755267
+O	0.231781
+Ar	0.012827
+O	0.470749
+Al	0.529251
+H	0.065471
+C	0.536945
+N	0.0215
+O	0.032085
+F	0.167411
+Ca	0.176589
+H	0.063984
+C	0.278
+N	0.027
+O	0.410016
+Mg	0.002
+P	0.07
+S	0.002
+Ca	0.147
+H	0.047234
+C	0.14433
+N	0.04199
+O	0.446096
+Mg	0.0022
+P	0.10497
+S	0.00315
+Ca	0.20993
+Zn	1E-4
+H	0.02468
+C	0.50161
+O	0.004527
+F	0.465209
+Si	0.003973
+F	0.486659
+Ca	0.513341
+C	0.272916
+O	0.727084
+H	0.029216
+C	0.271296
+N	0.121276
+O	0.578212
+H	0.107596
+N	8E-4
+O	0.874976
+S	0.014627
+Ce	0.002001
+I	0.488451
+Cs	0.511549
+H	0.143711
+C	0.856289
+H	0.108259
+N	2.7E-5
+O	0.878636
+Na	2.2E-5
+S	0.012968
+Cl	3.4E-5
+Fe	5.4E-5
+B	0.040064
+O	0.539562
+Na	0.028191
+Al	0.011644
+Si	0.37722
+K	0.003321
+H	0.026362
+C	0.691133
+N	0.07327
+O	0.209235
+Li	0.267585
+F	0.732415
+Li	0.082085
+B	0.25568
+O	0.662235
+H	0.114318
+C	0.655823
+O	0.092183
+Mg	0.134792
+Ca	0.002883
+H	0.251306
+C	0.748694
+H	0.081192
+C	0.583442
+N	0.017798
+O	0.186381
+Mg	0.130287
+Cl	9E-4
+H	0.100637
+C	0.10783
+N	0.02768
+O	0.754773
+Na	7.5E-4
+Mg	1.9E-4
+P	0.0018
+S	0.00241
+Cl	7.9E-4
+K	0.00302
+Ca	3E-5
+Fe	4E-5
+Zn	5E-5
+H	0.101997
+C	0.123
+N	0.035
+O	0.729003
+Na	8E-4
+Mg	2E-4
+P	0.002
+S	0.005
+K	0.003
+H	0.098234
+C	0.156214
+N	0.035451
+O	0.7101
+H	0.101969
+C	0.120058
+N	0.035451
+O	0.742522
+H	0.097976
+C	0.636856
+N	0.123779
+O	0.141389
+H	0.148605
+C	0.851395
+H	0.0141
+C	0.072261
+N	0.01932
+O	0.066101
+S	0.00189
+Br	0.349103
+Ag	0.474105
+I	0.00312
+H	0.085
+C	0.915
+H	0.055491
+C	0.755751
+O	0.188758
+H	0.143711
+C	0.856289
+H	0.041959
+C	0.62501
+O	0.333025
+H	0.080538
+C	0.599848
+O	0.319614
+H	0.143711
+C	0.856289
+H	0.077418
+C	0.922582
+C	0.240183
+F	0.759817
+H	0.04838
+C	0.38436
+Cl	0.56726
+H	0.182855
+C	0.817145
+O	0.532565
+Si	0.467435
+Na	0.153373
+I	0.846627
+H	0.067101
+C	0.932899
+H	0.101869
+C	0.456179
+N	0.035172
+O	0.40678
+H	0.102672
+C	0.56894
+N	0.035022
+O	0.293366
+H	0.08751
+C	0.91249
+H	0.111894
+O	0.888106
+H	0.111894
+O	0.888106`;
+    
+    //parse material.dat into an array of objects
+    let materialList = materialDat.split('\n').map(line => {
+      const parts = line.trim().split(/\s+/);
+      return {
+        name: parts[0],
+        density: parseFloat(parts[1]),
+        nrows: parseInt(parts[2]),
+        cum: parseInt(parts[3])
+      };
+    });
+    
+    //parse database1.dat into an array of objects
+    let dbList = databaseDat.split('\n').map(line => {
+      const parts = line.trim().split(/\s+/);
+      return { element: parts[0], fraction: parts[1] };
+    });
+    
+    //populate material drop down from materialList
+    function populateMaterialDropdown() {
+      const sel = document.getElementById('materialSelect');
+      sel.innerHTML = "";
+      materialList.forEach(mat => {
+        const option = document.createElement('option');
+        option.value = mat.name;
+        option.textContent = mat.name;
+        sel.appendChild(option);
+      });
+    }
+    
+    //compute bounds with a 5-cm margin for the [ T - Gshow ] section.
+    function computeBounds() {
+      const margin = 5;
+      const shapeType = document.getElementById('shapeSelect').value;
+      let bounds = { xMin: -5, xMax: 5, yMin: -5, yMax: 5, zMin: -5, zMax: 5 };
+      if(shapeType==="cylinder"){
+        const cylHeight = parseFloat(document.getElementById('cylinderHeight').value);
+        const cylRadius = parseFloat(document.getElementById('cylinderRadius').value);
+        bounds.xMin = -cylRadius - margin;
+        bounds.xMax = cylRadius + margin;
+        bounds.yMin = -cylRadius - margin;
+        bounds.yMax = cylRadius + margin;
+        bounds.zMin = 0 - margin;
+        bounds.zMax = cylHeight + margin;
+      } else if(shapeType==="box"){
+        const length = parseFloat(document.getElementById('boxLength').value);
+        const width = parseFloat(document.getElementById('boxWidth').value);
+        const heightBox = parseFloat(document.getElementById('boxHeight').value);
+        bounds.xMin = -length/2 - margin;
+        bounds.xMax = length/2 + margin;
+        bounds.yMin = -width/2 - margin;
+        bounds.yMax = width/2 + margin;
+        bounds.zMin = 0 - margin;
+        bounds.zMax = heightBox + margin;
+      } else if(shapeType==="sphere"){
+        const sphRadius = parseFloat(document.getElementById('sphereRadius').value);
+        bounds.xMin = -sphRadius - margin;
+        bounds.xMax = sphRadius + margin;
+        bounds.yMin = -sphRadius - margin;
+        bounds.yMax = sphRadius + margin;
+        bounds.zMin = 0 - margin;
+        bounds.zMax = 2 * sphRadius + margin;
+      }
+      return bounds;
+    }
+    
+    let scene, camera, renderer, shapeObject, beam, controls;
+    
+    function init() {
+      populateMaterialDropdown();
+      
+      //set up scene
+      scene = new THREE.Scene();
+      scene.background = new THREE.Color(0xeeeeee);
+      
+      //set up camera (Z-up)
+      camera = new THREE.PerspectiveCamera(75, window.innerWidth/window.innerHeight, 0.1, 1000);
+      camera.up.set(0,0,1);
+      
+      //renderer with preserveDrawingBuffer for snapshots
+      renderer = new THREE.WebGLRenderer({antialias:true, preserveDrawingBuffer:true});
+      renderer.setSize(window.innerWidth, window.innerHeight);
+      document.getElementById('container').appendChild(renderer.domElement);
+      
+      //add grid helper (in the XY plane)
+      let grid = new THREE.GridHelper(50,50);
+      grid.rotation.x = Math.PI/2;
+      scene.add(grid);
+      
+      //set up OrbitControls
+      controls = new THREE.OrbitControls(camera, renderer.domElement);
+      controls.enableDamping = true;
+      controls.dampingFactor = 0.05;
+      controls.target.set(0,0,0.5);
+      controls.update();
+      
+      //create shape and beam
+      createShape();
+      createBeam();
+      
+
+      //lighting
+      scene.add(new THREE.AmbientLight(0xffffff, 0.8));
+      const directionalLight = new THREE.DirectionalLight(0xffffff, 1);
+      directionalLight.position.set(10,10,10);
+      scene.add(directionalLight);
+      
+      //position camera and lookAt
+      camera.position.set(30,30,30);
+      camera.lookAt(0,0,0.5);
+      controls.target.set(0,0,0.5);
+      controls.update();
+      
+      animate();
+      updatePhitsScript();
+    }
+    
+    //create the target shape based on shape type and dimensions.
+    function createShape() {
+      if (shapeObject) {
+        scene.remove(shapeObject);
+        shapeObject.geometry.dispose();
+        shapeObject.material.dispose();
+      }
+      const shapeType = document.getElementById('shapeSelect').value;
+      let geometry, heightVal = 0;
+      if (shapeType === 'box') {
+        const length = parseFloat(document.getElementById('boxLength').value);
+        const width = parseFloat(document.getElementById('boxWidth').value);
+        const heightBox = parseFloat(document.getElementById('boxHeight').value);
+        geometry = new THREE.BoxGeometry(length, heightBox, width);
+        geometry.rotateX(-Math.PI/2);  //so that height becomes along Z
+        heightVal = heightBox;
+      } else if (shapeType === 'cylinder') {
+        const radius = parseFloat(document.getElementById('cylinderRadius').value);
+        const cylHeight = parseFloat(document.getElementById('cylinderHeight').value);
+        geometry = new THREE.CylinderGeometry(radius, radius, cylHeight, 32);
+        geometry.rotateX(-Math.PI/2);  //height along Z
+        heightVal = cylHeight;
+      } else if (shapeType === 'sphere') {
+        const radius = parseFloat(document.getElementById('sphereRadius').value);
+        geometry = new THREE.SphereGeometry(radius, 32, 16);
+        heightVal = radius*2;
+      }
+      //choose color based on material using a shade logic.
+      let matSel = document.getElementById('materialSelect').value.toUpperCase();
+      let color = 0x999999;
+      if (matSel === "TEP" || matSel === "WATER-LIQUID") {
+  color = 0x1E90FF; //DodgerBlue
+} else if (matSel === "ACETYLENE") {
+  color = 0xFFD700; //Gold
+} else if (matSel === "ADIPOSE-TISSUE") {
+  color = 0xFF69B4; //HotPink
+} else if (matSel === "AIR") {
+  color = 0x87CEEB; //SkyBlue
+} else if (matSel === "AL2O3") {
+  color = 0xCD853F; //Peru
+} else if (matSel === "BONE-EQ-PLASTIC") {
+  color = 0xA0522D; //Sienna
+} else if (matSel === "BONE-COMPACT") {
+  color = 0x8B4513; //SaddleBrown
+} else if (matSel === "BONE-CORTICAL") {
+  color = 0x8B4513; //SaddleBrown
+} else if (matSel === "AIR-EQ-PLASTIC") {
+  color = 0xBA55D3; //MediumOrchid
+} else if (matSel === "CAF2") {
+  color = 0xB0C4DE; //LightSteelBlue
+} else if (matSel === "CO2") {
+  color = 0xAAAAAA; //Gray
+} else if (matSel === "CELLULOSE-NITRATE") {
+  color = 0xFFA07A; //LightSalmon
+} else if (matSel === "CERIC-SULFATE-SOL") {
+  color = 0xFA8072; //Salmon
+} else if (matSel === "CSI") {
+  color = 0xF08080; //LightCoral
+} else if (matSel === "ETHYLENE") {
+  color = 0xFF6347; //Tomato
+} else if (matSel === "FERROUS-SULFATE-SOL") {
+  color = 0xFF4500; //OrangeRed
+} else if (matSel === "PYREX-GLASS") {
+  color = 0xDC143C; //Crimson
+} else if (matSel === "KAPTON-POLYMIDE") {
+  color = 0xC71585; //MediumVioletRed
+} else if (matSel === "LIF") {
+  color = 0x8B008B; //DarkMagenta
+} else if (matSel === "LITHIUM-TETRABORATE") {
+  color = 0x800080; //Purple
+} else if (matSel === "M3-WAX") {
+  color = 0x9932CC; //DarkOrchid
+} else if (matSel === "METHANE") {
+  color = 0x8A2BE2; //BlueViolet
+} else if (matSel === "MS20-TISSUE-SUB") {
+  color = 0x9400D3; //DarkViolet
+} else if (matSel === "MUSCLE-SKELETAL") {
+  color = 0x4B0082; //Indigo
+} else if (matSel === "MUSCLE-STRIATED") {
+  color = 0x6A5ACD; //SlateBlue
+} else if (matSel === "MUSCLE-EQ-LIQUID-SUCROSE") {
+  color = 0x483D8B; //DarkSlateBlue
+} else if (matSel === "MUSCLE-EQ-LIQUID") {
+  color = 0x663399; //RebeccaPurple
+} else if (matSel === "NYLON-TYPE-6") {
+  color = 0x7B68EE; //MediumSlateBlue
+} else if (matSel === "PARAFFIN-WAX") {
+  color = 0x00008B; //DarkBlue
+} else if (matSel === "PHOTOGRAPHIC-EMULSION") {
+  color = 0x0000CD; //MediumBlue
+} else if (matSel === "PLASTIC-SCINTILLATOR") {
+  color = 0x0000FF; //Blue
+} else if (matSel === "POLYCARBONATE") {
+  color = 0x4169E1; //RoyalBlue
+} else if (matSel === "POLYETHYLENE") {
+  color = 0x1E90FF; //DodgerBlue
+} else if (matSel === "MYLAR") {
+  color = 0x6495ED; //CornflowerBlue
+} else if (matSel === "POLYMETHYL-METHACRALATE") {
+  color = 0x4682B4; //SteelBlue
+} else if (matSel === "POLYPROPYLENE") {
+  color = 0x5F9EA0; //CadetBlue
+} else if (matSel === "POLYSTYRENE") {
+  color = 0x008B8B; //DarkCyan
+} else if (matSel === "TEFLON") {
+  color = 0x008080; //Teal
+} else if (matSel === "POLYVINYL-CHLORIDE") {
+  color = 0x20B2AA; //LightSeaGreen
+} else if (matSel === "PROPANE") {
+  color = 0x008000; //Green
+} else if (matSel === "SIO2") {
+  color = 0x006400; //DarkGreen
+} else if (matSel === "NAI") {
+  color = 0x228B22; //ForestGreen
+} else if (matSel === "STILBENE") {
+  color = 0x2E8B57; //SeaGreen
+} else if (matSel === "TISSUE-EQ-GAS-METHANE") {
+  color = 0x3CB371; //MediumSeaGreen
+} else if (matSel === "TISSUE-EQ-GAS-PROPANE") {
+  color = 0x808000; //Olive
+} else if (matSel === "TOLUENE") {
+  color = 0xBDB76B; //DarkKhaki
+} else if (matSel === "WATER-VAPOR") {
+  color = 0xB0E0E6; //PowderBlue
+}
+      
+      const material = new THREE.MeshPhongMaterial({color: color, shininess: 100});
+      shapeObject = new THREE.Mesh(geometry, material);
+      
+      //position shape so that its bottom touches Z=0.
+      if(document.getElementById('shapeSelect').value==="sphere"){
+        shapeObject.position.z = geometry.parameters.radius;
+      } else {
+        shapeObject.position.z = heightVal/2;
+      }
+      scene.add(shapeObject);
+    }
+    
+    //create the beam as a red disk with arrow helpers.
+    function createBeam() {
+      const beamDiskRadius = parseFloat(document.getElementById('beamDiskRadius').value);
+      const segments = 32;
+      const geometry = new THREE.CircleGeometry(beamDiskRadius, segments);
+      const material = new THREE.MeshBasicMaterial({color: 0xff0000, side: THREE.DoubleSide});
+      beam = new THREE.Mesh(geometry, material);
+      beam.arrows = new THREE.Group();
+      scene.add(beam);
+      scene.add(beam.arrows);
+      updateBeam();
+    }
+    
+    //update beam disk geometry if its radius changes.
+    function updateBeamDisk() {
+      const beamDiskRadius = parseFloat(document.getElementById('beamDiskRadius').value);
+      beam.geometry.dispose();
+      beam.geometry = new THREE.CircleGeometry(beamDiskRadius, 32);
+      updateBeamArrows();
+    }
+    
+    //update beam position and orientation based on user inputs and irradiation axis.
+    function updateBeam() {
+      const x = parseFloat(document.getElementById('beamPosX').value);
+      const y = parseFloat(document.getElementById('beamPosY').value);
+      const z = parseFloat(document.getElementById('beamPosZ').value);
+      beam.position.set(x, y, z);
+      
+      const irrAxis = document.getElementById('irrAxis').value;
+      const w = parseFloat(document.getElementById('beamDir').value);
+      const phiDeg = parseFloat(document.getElementById('beamPhi').value);
+      const phiRad = THREE.MathUtils.degToRad(phiDeg);
+      const sinTheta = Math.sqrt(1 - w*w);
+      
+      let beamDirection = new THREE.Vector3();
+      if(irrAxis==="z"){
+        beamDirection.set(sinTheta * Math.cos(phiRad),
+                          sinTheta * Math.sin(phiRad),
+                          w);
+      } else if(irrAxis==="x"){
+        beamDirection.set(w,
+                          sinTheta * Math.cos(phiRad),
+                          sinTheta * Math.sin(phiRad));
+      } else if(irrAxis==="y"){
+        beamDirection.set(sinTheta * Math.cos(phiRad),
+                          w,
+                          sinTheta * Math.sin(phiRad));
+      }
+      beamDirection.normalize();
+      beam.userData.direction = beamDirection.clone();
+      
+      const defaultNormal = new THREE.Vector3(0,0,1);
+      const quaternion = new THREE.Quaternion();
+      quaternion.setFromUnitVectors(defaultNormal, beamDirection);
+      beam.setRotationFromQuaternion(quaternion);
+      
+      updateBeamArrows();
+      updatePhitsScript();
+    }
+    
+    //update arrow helpers on the beam disk using an explicit disk-plane basis.
+    function updateBeamArrows() {
+      while(beam.arrows.children.length > 0){
+        const child = beam.arrows.children[0];
+        beam.arrows.remove(child);
+        if(child.geometry) child.geometry.dispose();
+        if(child.material) child.material.dispose();
+      }
+      const numArrows = 8;
+      const arrowLength = beam.geometry.parameters.radius * 0.5;
+      const beamDirection = beam.userData.direction || new THREE.Vector3(0,0,1);
+      
+      let normal = beamDirection.clone().normalize();
+      let u;
+      if(Math.abs(normal.z) < 0.999){
+        u = new THREE.Vector3(0,0,1).cross(normal).normalize();
+      } else {
+        u = new THREE.Vector3(1,0,0).cross(normal).normalize();
+      }
+      let v = normal.clone().cross(u).normalize();
+      
+      const diskRadius = beam.geometry.parameters.radius;
+      const r = diskRadius * 0.7;
+      
+      for(let i=0; i<numArrows; i++){
+        const angle = (i/numArrows)*2*Math.PI;
+        const arrowPos = beam.position.clone()
+          .add(u.clone().multiplyScalar(r*Math.cos(angle)))
+          .add(v.clone().multiplyScalar(r*Math.sin(angle)));
+        const arrowHelper = new THREE.ArrowHelper(beamDirection, arrowPos, arrowLength, 0xff0000, arrowLength*0.3, arrowLength*0.2);
+        beam.arrows.add(arrowHelper);
+      }
+    }
+    
+    //build the PHITS script (non-editable) based on all inputs.
+    //this includes [ TITLE ], [ PARAMETERS ], [ SURFACE ], [ CELL ], [ SOURCE ], [ MATERIAL ],
+    // [ T - Gshow ], and if the geometry is cylinder (RCC), [ T - Deposit ].
+    function updatePhitsScript() {
+      //PHITS param section
+      const title = document.getElementById('titleInput').value;
+      const icntl = document.getElementById('icntlInput').value;
+      const maxcas = document.getElementById('maxcasInput').value;
+      const maxbch = document.getElementById('maxbchInput').value;
+      const beamEnergy = parseFloat(document.getElementById('beamEnergy').value).toFixed(0);
+      const fileLine = `${beamEnergy}MeV_phits.out`;
+      
+      //SURFACE section based on shape
+      const shapeType = document.getElementById('shapeSelect').value;
+      let surfaceText = `[ S u r f a c e ]
+`;
+      if(shapeType==="cylinder"){
+        const cylRadius = parseFloat(document.getElementById('cylinderRadius').value).toFixed(3);
+        const cylHeight = parseFloat(document.getElementById('cylinderHeight').value).toFixed(3);
+        surfaceText += ` 1  RCC    0.000    0.000    0.000    0.000    0.000    ${cylHeight}    ${cylRadius}\n`;
+      } else if(shapeType==="box"){
+        const length = parseFloat(document.getElementById('boxLength').value);
+        const width = parseFloat(document.getElementById('boxWidth').value);
+        const heightBox = parseFloat(document.getElementById('boxHeight').value);
+        const xmin = (-length/2).toFixed(3);
+        const xmax = (length/2).toFixed(3);
+        const ymin = (-width/2).toFixed(3);
+        const ymax = (width/2).toFixed(3);
+        const zmin = "0.000";
+        const zmax = heightBox.toFixed(3);
+        surfaceText += ` 1  RPP    ${xmin}    ${xmax}    ${ymin}    ${ymax}    ${zmin}    ${zmax}\n`;
+      } else if(shapeType==="sphere"){
+        const sphRadius = parseFloat(document.getElementById('sphereRadius').value);
+        const sphRadiusShift = parseFloat(document.getElementById('sphereRadius').value);
+        surfaceText += ` 1  SPH 0 0 ${sphRadiusShift}  ${sphRadius.toFixed(3)}\n`;
+      }
+      //add ambient sphere (fixed tag 500, radius 50.000)
+      surfaceText += ` 500  so      50.000\n`;
+      
+      //CELL section (density from material)
+      const selectedMatName = document.getElementById('materialSelect').value;
+      let selectedMat = materialList.find(mat => mat.name === selectedMatName);
+      let densityStr = "1.00";
+      if(selectedMat){
+        densityStr = selectedMat.density.toFixed(3);
+      }
+      const cellText = `[ C e l l ]
+ 500   -1            500
+ 1  1  -${densityStr}   -1
+ 501    0   -500   #1\n`;
+      
+      // SOURCE section based on irradiation axis
+      const beamPosX = parseFloat(document.getElementById('beamPosX').value).toFixed(2);
+      const beamPosY = parseFloat(document.getElementById('beamPosY').value).toFixed(2);
+      const beamPosZ = parseFloat(document.getElementById('beamPosZ').value).toFixed(2);
+      const beamDir = parseFloat(document.getElementById('beamDir').value).toFixed(2);
+      const beamPhi = parseFloat(document.getElementById('beamPhi').value).toFixed(2);
+      const beamDiskRadius = parseFloat(document.getElementById('beamDiskRadius').value).toFixed(3);
+      const irrAxis = document.getElementById('irrAxis').value;
+      
+      let sourceText = `[ S o u r c e ]
+`;
+      if(irrAxis==="x"){
+        sourceText += ` s-type   = 1
+ proj     = proton
+ dir      = 0.00
+ phi      = 0.00
+ x0       = ${beamPosX}
+ x1       = ${beamPosX}
+ y0       = ${beamPosY}
+ z0       = ${beamPosZ}
+ r0       = ${beamDiskRadius}
+ e0       = ${beamEnergy}
+`;
+      } else if(irrAxis==="z"){
+        sourceText += ` s-type   = 1
+ proj     = proton
+ dir      = 1.00
+ phi      = 0.00
+ x0       = ${beamPosX}
+ y0       = ${beamPosY}
+ z0       = ${beamPosZ}
+ z1       = ${beamPosZ}
+ r0       = ${beamDiskRadius}
+ e0       = ${beamEnergy}
+`;
+      } else if(irrAxis==="y"){
+        sourceText += ` s-type   = 1
+ proj     = proton
+ dir      = 0.00
+ phi      = 90.00
+ y0       = ${beamPosY}
+ y1       = ${beamPosY}
+ x0       = ${beamPosX}
+ z0       = ${beamPosZ}
+ r0       = ${beamDiskRadius}
+ e0       = ${beamEnergy}
+`;
+      }
+      
+      //MATERIAL section: build material card from selected material and database.
+      let materialText = `[ M a t e r i a l ]
+`
+      let matnum = `mat[1] $`
+;
+      if(selectedMat){
+        //the material card: first output the material name and negative density.
+        materialText += `${matnum}${selectedMat.name.toUpperCase()}\n`;
+        //determine starting and ending indices for database entries.
+        const nrows = selectedMat.nrows;
+        const cum = selectedMat.cum;
+        const startIdx = cum - nrows;  //zero-based
+        const endIdx = cum;  //non-inclusive end
+        for(let i = startIdx; i < endIdx; i++){
+          if(i < dbList.length){
+            materialText += `${dbList[i].element}\t${-1.0*dbList[i].fraction}\n`;
+          }
+        }
+      }
+      
+      //[ T - Gshow ] section compute bounds with a margin (5 cm)
+      const bounds = computeBounds();
+      const xMin = bounds.xMin.toFixed(3);
+      const xMax = bounds.xMax.toFixed(3);
+      const yMin = bounds.yMin.toFixed(3);
+      const yMax = bounds.yMax.toFixed(3);
+      const zMin = bounds.zMin.toFixed(3);
+      const zMax = bounds.zMax.toFixed(3);
+      const topViewFile = `geometry_topview_${selectedMatName.toLowerCase()}.out`;
+      let gshowText = `[ T - Gshow ]
+title = generated phantom
+mesh = xyz
+z-type =    2
+zmin =       ${zMin}
+zmax =       ${zMax}
+nz =   200
+y-type =    2
+ymin =       ${yMin}
+ymax =       ${yMax}
+ny =   100
+x-type =    1
+nx =    1
+  ${xMin}    ${xMax}
+axis =   yz
+file = ${topViewFile}
+output =    6
+epsout =    1`;
+      
+      //start building the final PHITS script
+      let script = `[ T i t l e ]
+ ${title}
+
+[ P a r a m e t e r s ]
+ icntl   =     ${icntl}
+ maxcas  =     ${maxcas}
+ maxbch  =     ${maxbch}
+ file(6) =    ${fileLine}
+
+${surfaceText}
+
+${cellText}
+
+${sourceText}
+
+${materialText}
+
+${gshowText}
+`;
+      
+      //keep this commented since we now switched to reg mesh instead of R-Z mesh
+      //if(shapeType==="cylinder"){
+        const cylRadius = parseFloat(document.getElementById('cylinderRadius').value).toFixed(3);
+        const cylHeight = parseFloat(document.getElementById('cylinderHeight').value).toFixed(3);
+        const depositFile = `${beamEnergy}MeV_dose_${selectedMatName.toLowerCase()}.out`;
+        const depositText = `[ T - Deposit ]
+mesh =  reg
+reg = 1
+axis =   reg
+unit  =  2
+material  =  all
+output =    dose
+file  =    ${depositFile}
+part = proton photon neutron alpha
+epsout =    1`;
+        script += "\n" + depositText;
+    //  }
+
+  let end = `
+[ E n d ]
+      `;
+      script += "\n" + end;
+
+
+      
+      document.getElementById('phitsScript').textContent = script;
+    }
+    
+    function animate() {
+      requestAnimationFrame(animate);
+      controls.update();
+      renderer.render(scene, camera);
+    }
+    
+    function exportData() {
+      const materialName = document.getElementById('materialSelect').value;
+      const fileName = 'export_' + materialName + '.inp';
+      const scriptText = document.getElementById('phitsScript').textContent;
+      const blob = new Blob([scriptText], { type: 'text/plain' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = fileName;
+      a.click();
+      URL.revokeObjectURL(url);
+
+      
+      //const imgData = renderer.domElement.toDataURL('image/png');
+      //const aImg = document.createElement('a');
+      //aImg.href = imgData;
+      //aImg.download = 'snapshot.png';
+      //aImg.click();
+    }
+    
+    //event listeners
+    document.getElementById('shapeSelect').addEventListener('change', function() {
+      document.getElementById('boxParams').style.display = (this.value==="box") ? 'block' : 'none';
+      document.getElementById('cylinderParams').style.display = (this.value==="cylinder") ? 'block' : 'none';
+      document.getElementById('sphereParams').style.display = (this.value==="sphere") ? 'block' : 'none';
+      createShape();
+      updatePhitsScript();
+    });
+    document.getElementById('boxLength').addEventListener('input', function(){ createShape(); updatePhitsScript(); });
+    document.getElementById('boxWidth').addEventListener('input', function(){ createShape(); updatePhitsScript(); });
+    document.getElementById('boxHeight').addEventListener('input', function(){ createShape(); updatePhitsScript(); });
+    document.getElementById('cylinderRadius').addEventListener('input', function(){ createShape(); updatePhitsScript(); });
+    document.getElementById('cylinderHeight').addEventListener('input', function(){ createShape(); updatePhitsScript(); });
+    document.getElementById('sphereRadius').addEventListener('input', function(){ createShape(); updatePhitsScript(); });
+    document.getElementById('materialSelect').addEventListener('change', function(){
+      createShape();
+      updateBeam();
+      updatePhitsScript();
+    });
+    
+    document.getElementById('beamPosX').addEventListener('input', updateBeam);
+    document.getElementById('beamPosY').addEventListener('input', updateBeam);
+    document.getElementById('beamPosZ').addEventListener('input', updateBeam);
+    document.getElementById('beamDir').addEventListener('input', updateBeam);
+    document.getElementById('beamPhi').addEventListener('input', updateBeam);
+    document.getElementById('beamDiskRadius').addEventListener('input', function(){
+      updateBeamDisk();
+      updateBeam();
+    });
+    document.getElementById('irrAxis').addEventListener('change', updateBeam);
+    document.getElementById('maxcasInput').addEventListener('input', updatePhitsScript);
+    document.getElementById('maxbchInput').addEventListener('input', updatePhitsScript);
+    document.getElementById('icntlInput').addEventListener('input', updatePhitsScript);
+    document.getElementById('titleInput').addEventListener('input', updatePhitsScript);
+    document.getElementById('beamEnergy').addEventListener('input', updatePhitsScript);
+    
+    document.getElementById('exportButton').addEventListener('click', exportData);
+    
+    init();
+  </script>
+</body>
+</html>
